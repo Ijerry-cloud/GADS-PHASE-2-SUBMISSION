@@ -1,5 +1,5 @@
 #LAB; Working with Virtual Machines
-#Here we set up a game application—a Minecraft server that runs on a Compute Engine instance.
+#Here we set up a game applicationâ€”a Minecraft server that runs on a Compute Engine instance.
 
 
 
@@ -69,15 +69,11 @@ sudo screen -r mcs
 # we then Create a firewall rule to Allow client traffic
 gcloud compute --project=qwiklabs-gcp-02-79c0b8b4ba6b firewall-rules create minecraft-rule --direction=INGRESS --priority=1000 --network=default --action=ALLOW --rules=tcp:25565 --source-ranges=0.0.0.0/0 --target-tags=minecraft-server
 
-#
+# Verify server availability
+#obtain the ip address of your compute instance by using 
+gcloud compute instances describe
 
-.........Verify server availability
-...........In the left pane, click External IP addresses.
-,,,,,,,,Locate and copy the External IP address for the mc-server VM.
-.............Use the following website to test your Minecraft server: https://mcsrvstat.us/
-
-
-
+#Locate and copy the External IP address for the vm and then check its availability on the minecraft website 
 
 #Next we Create a Cloud Storage bucket
 
@@ -115,14 +111,6 @@ sudo chmod 755 /home/minecraft/backup.sh
 . /home/minecraft/backup.sh
 
 
-........After the script finishes, return to the Cloud Console.
-
-.........To verify that the backup file was written, on the Navigation menu click Storage > Browser.
-
-..........Click on the backup bucket name. You should see a folder with a date-time stamp name. Now that you've verified that the backups are working, you can schedule a cron job to automate the task.
-
-
-
 # open the cron table for editing:
 sudo crontab -e
 
@@ -139,17 +127,6 @@ sudo crontab -e
 exit 
 
 
+#add metadata to automate the process of server maintanenance
+gcloud compute instances add-metadata test-instance --metadata=startup-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/startup.sh,shutdown-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/shutdown.sh 
 
-
-
-
-
-
-
-
-
-
-Automate server maintenance with startup and shutdown scripts
-
-metadata 
-gcloud beta compute --project=qwiklabs-gcp-02-35039196ddf9 instances create instance-1 --zone=us-central1-a --machine-type=e2-medium --subnet=default --network-tier=PREMIUM --metadata=startup-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/startup.sh,shutdown-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/shutdown.sh --maintenance-policy=MIGRATE --service-account=477334854580-compute@developer.gserviceaccount.com --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append --image=debian-9-stretch-v20200902 --image-project=debian-cloud --boot-disk-size=10GB --boot-disk-type=pd-standard --boot-disk-device-name=instance-1 --reservation-affinity=any
