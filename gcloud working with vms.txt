@@ -1,0 +1,155 @@
+#LAB; Working with Virtual Machines
+#Here we set up a game application—a Minecraft server that runs on a Compute Engine instance.
+
+
+
+#Create the VM
+gcloud beta compute --project=qwiklabs-gcp-02-79c0b8b4ba6b instances create mc-server --zone=us-central1-a --machine-type=e2-medium --subnet=default --address=34.67.251.227 --network-tier=PREMIUM --maintenance-policy=MIGRATE --service-account=748462231317-compute@developer.gserviceaccount.com --scopes=https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/trace.append,https://www.googleapis.com/auth/devstorage.read_write --tags=minecraft-server --image=debian-9-stretch-v20200902 --image-project=debian-cloud --boot-disk-size=10GB --boot-disk-type=pd-standard --boot-disk-device-name=mc-server --create-disk=mode=rw,size=50,type=projects/qwiklabs-gcp-02-79c0b8b4ba6b/zones/us-central1-a/diskTypes/pd-ssd,name=minecraft-disk,device-name=minecraft-disk --reservation-affinity=any
+
+# SSH into the mc-server by running:
+ssh mc-server
+
+#To create a directory that serves as the mount point for the data disk, run the following command:
+sudo mkdir -p /home/minecraft
+
+#To format the disk, run the following command:
+sudo mkfs.ext4 -F -E lazy_itable_init=0,\
+lazy_journal_init=0,discard \
+/dev/disk/by-id/google-minecraft-disk
+
+#To mount the disk, we run the following command:
+sudo mount -o discard,defaults /dev/disk/by-id/google-minecraft-disk /home/minecraft
+
+#The next phase is to install the Java Runtime Environment (JRE) and the Minecraft server
+# In the SSH terminal for mc-server, to update the Debian repositories on the VM, run the following command:
+sudo apt-get update
+
+
+#after the repositories are updated, to install the headless JRE, run the following command:
+sudo apt-get install -y default-jre-headless
+
+#To navigate to the directory where the persistent disk is mounted, run the following command:
+cd /home/minecraft
+
+#To install wget, run the following command:
+sudo apt-get install wget
+
+#If prompted to continue, type Y
+
+#To download the current Minecraft server JAR file (1.11.2 JAR), run the following command:
+sudo wget https://launcher.mojang.com/v1/objects/d0d0fe2b1dc6ab4c65554cb734270872b72
+
+#The next phase after that is to Initialize the Minecraft server
+#To initialize the Minecraft server, run the following command:
+sudo java -Xmx1024M -Xms1024M -jar server.jar nogui
+
+#To see the files that were created in the first initialization of the Minecraft server, run the following command:
+sudo ls -l
+
+#We can then edit the server.properties file to change the default behavior of the Minecraft server.
+#To edit the EULA, run the following command:
+sudo nano eula.txt
+
+#Change the last line of the file from eula=false to eula=true
+#Press Ctrl+O, ENTER to save the file and then press Ctrl+X to exit nano.
+
+
+#we then make the server be able to run as a backgroud process so that it doesnt stop on exit of the cloud shell. We do this by installing screen 
+#To install screen, run the following command:
+sudo apt-get install -y screen
+
+#To start your Minecraft server in a screen virtual terminal, run the following command: (Use the -S flag to name your terminal mcs)
+sudo screen -S mcs java -Xmx1024M -Xms1024M -jar server.jar nogui
+
+#To detach the screen terminal, press Ctrl+A, Ctrl+D. The terminal continues to run in the background. To reattach the terminal, run the following command:
+sudo screen -r mcs
+
+
+
+# we then Create a firewall rule to Allow client traffic
+gcloud compute --project=qwiklabs-gcp-02-79c0b8b4ba6b firewall-rules create minecraft-rule --direction=INGRESS --priority=1000 --network=default --action=ALLOW --rules=tcp:25565 --source-ranges=0.0.0.0/0 --target-tags=minecraft-server
+
+#
+
+.........Verify server availability
+...........In the left pane, click External IP addresses.
+,,,,,,,,Locate and copy the External IP address for the mc-server VM.
+.............Use the following website to test your Minecraft server: https://mcsrvstat.us/
+
+
+
+
+#Next we Create a Cloud Storage bucket
+
+#we Create a globally unique bucket name, and store it in the environment variable called YOUR_BUCKET_NAME. 
+export YOUR_BUCKET_NAME=<we enter the bucket name we wish our cloud storage bucket to be called>
+
+#Then Verify it by echoing our bucket:
+echo $YOUR_BUCKET_NAME
+
+#create the bucket
+gsutil mb gs://$YOUR_BUCKET_NAME-minecraft-backup
+
+
+# Creating a backup script
+#navigate to your home directory of the vm instance
+cd /home/minecraft
+
+#create the script by running the following command:
+sudo nano /home/minecraft/backup.sh
+
+# Then Copy and paste the following script into the file:
+
+#!/bin/bash
+screen -r mcs -X stuff '/save-all\n/save-off\n'
+/usr/bin/gsutil cp -R ${BASH_SOURCE%/*}/world gs://${YOUR_BUCKET_NAME}-minecraft-backup/$(date "+%Y%m%d-%H%M%S")-world
+screen -r mcs -X stuff '/save-on\n'
+
+
+#Press Ctrl+O, ENTER to save the file, and press Ctrl+X to exit nano.
+#To make the script executable, run the following command:
+sudo chmod 755 /home/minecraft/backup.sh
+
+#Testing the backup script and scheduling a cron job
+#In the mc-server SSH terminal, run the backup script:
+. /home/minecraft/backup.sh
+
+
+........After the script finishes, return to the Cloud Console.
+
+.........To verify that the backup file was written, on the Navigation menu click Storage > Browser.
+
+..........Click on the backup bucket name. You should see a folder with a date-time stamp name. Now that you've verified that the backups are working, you can schedule a cron job to automate the task.
+
+
+
+# open the cron table for editing:
+sudo crontab -e
+
+#When you are prompted to select an editor, type the number corresponding to nano, and press ENTER.
+
+# At the bottom of the cron table, paste the following line which instructs cron to run backups every 4 hours.
+0 */4 * * * /home/minecraft/backup.sh
+
+#Press Ctrl+O, ENTER to save the cron table, and press Ctrl+X to exit nano.
+
+#Server maintenance
+
+#Since the mcs server process is attached to the instance terminal, logging out of our terminal would automatically shut down the server.
+exit 
+
+
+
+
+
+
+
+
+
+
+
+
+Automate server maintenance with startup and shutdown scripts
+
+metadata 
+gcloud beta compute --project=qwiklabs-gcp-02-35039196ddf9 instances create instance-1 --zone=us-central1-a --machine-type=e2-medium --subnet=default --network-tier=PREMIUM --metadata=startup-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/startup.sh,shutdown-script-url=https://storage.googleapis.com/cloud-training/archinfra/mcserver/shutdown.sh --maintenance-policy=MIGRATE --service-account=477334854580-compute@developer.gserviceaccount.com --scopes=https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append --image=debian-9-stretch-v20200902 --image-project=debian-cloud --boot-disk-size=10GB --boot-disk-type=pd-standard --boot-disk-device-name=instance-1 --reservation-affinity=any

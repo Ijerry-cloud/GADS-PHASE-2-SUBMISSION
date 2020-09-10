@@ -1,0 +1,129 @@
+#Loading Taxi Data into Google Cloud SQL
+#In this lab, we learnt how to import data from CSV text files into Cloud SQL and then carry out some basic data analysis using simple queries.
+
+
+
+
+#Preparing your Environment
+#Create environment variables that will be used later in the lab for your project ID and the storage bucket that will contain your data:
+
+export PROJECT_ID=$(gcloud info --format='value(config.project)')
+export BUCKET=${PROJECT_ID}-ml
+
+# Create a Cloud SQL instance
+
+gcloud sql instances create taxi \
+    --tier=db-n1-standard-1 --activation-policy=ALWAYS
+
+#Setting a root password for the Cloud SQL instance:
+
+gcloud sql users set-password root --host % --instance taxi \
+ --password Passw0rd
+
+#When prompted for the password type Passw0rd for the password and then press enter 
+
+#Now create an environment variable with the IP address of the Cloud Shell:
+export ADDRESS=$(wget -qO - http://ipecho.net/plain)/32
+
+# Whitelist the Cloud Shell instance for management access to the SQL instance.
+
+gcloud sql instances patch taxi --authorized-networks $ADDRESS
+
+# When prompted press Y to accept the change.
+
+#obtain the IP address of the Cloud SQL instance:
+MYSQLIP=$(gcloud sql instances describe \
+taxi --format="value(ipAddresses.ipAddress)")
+
+#Check the variable MYSQLIP:
+echo $MYSQLIP
+
+#Log into the mysql command line interfac:
+mysql --host=$MYSQLIP --user=root \
+      --password --verbose
+
+#When prompted for a password enter Passw0rd. Paste the following code into the command line to create the schema for the trips table:
+create database if not exists bts;
+use bts;
+
+drop table if exists trips;
+
+create table trips (
+  vendor_id VARCHAR(16),		
+  pickup_datetime DATETIME,
+  dropoff_datetime DATETIME,
+  passenger_count INT,
+  trip_distance FLOAT,
+  rate_code VARCHAR(16),
+  store_and_fwd_flag VARCHAR(16),
+  payment_type VARCHAR(16),
+  fare_amount FLOAT,
+  extra FLOAT,
+  mta_tax FLOAT,
+  tip_amount FLOAT,
+  tolls_amount FLOAT,
+  imp_surcharge FLOAT,
+  total_amount FLOAT,
+  pickup_location_id VARCHAR(16),
+  dropoff_location_id VARCHAR(16)
+);
+
+#check the import:
+
+describe trips;
+
+# We Query the trips table:
+select distinct(pickup_location_id) from trips;
+
+#Exit the mysql interactive console:
+exit
+
+#Adding data to Cloud SQL instance
+#We copy the New York City taxi trips CSV files stored on Cloud Storage locally:
+gsutil cp gs://cloud-training/OCBL013/nyc_tlc_yellow_trips_2018_subset_1.csv trips.csv-1
+gsutil cp gs://cloud-training/OCBL013/nyc_tlc_yellow_trips_2018_subset_2.csv trips.csv-2
+
+#Import the CSV file data into Cloud SQL using mysql:
+mysqlimport --local --host=$MYSQLIP --user=root --password \
+--ignore-lines=1 --fields-terminated-by=',' bts trips.csv-*
+
+#When prompted for a password enter Passw0rd.
+
+#We then Connect to the mysql interactive console:
+mysql --host=$MYSQLIP --user=root  --password
+
+#When prompted for a password enter Passw0rd.
+
+#Checking for data integrity
+# We select the database:
+use bts;
+
+#We then Query the trips table to obtain unique pickup location regions:
+select distinct(pickup_location_id) from trips;
+
+#We Enter the following query into the console:
+select
+  max(trip_distance),
+  min(trip_distance)
+from
+  trips;
+
+#The minimum trip distance of 0 seems buggy, so we count how many trips in the dataset have a trip distance of 0:
+select count(*) from trips where trip_distance = 0;
+
+#We expect the fare_amount column to be positive by entering the following query to see if this is true in the database:
+select count(*) from trips where fare_amount < 0
+
+#We then investigate the payment_type column.
+
+select
+  payment_type,
+  count(*)
+from
+  trips
+group by
+  payment_type;
+
+
+#Exit the 'mysql' interactive console:
+exit
